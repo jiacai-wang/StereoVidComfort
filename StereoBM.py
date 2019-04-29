@@ -7,11 +7,12 @@ from matplotlib import pyplot as plt
 
 
 
-img = cv2.imread("1.png", 0)
+img = cv2.imread("./pic_en/2.jpg", 0)
 
 imgL = np.split(img, 2, 1)[0]
 imgR = np.split(img, 2, 1)[1]
-stereo = cv2.StereoBM_create(numDisparities=32, blockSize=25)
+stereo = cv2.StereoBM_create(numDisparities=96, blockSize=11)
 disparity = stereo.compute(imgL, imgR)
+plt.title("BM")
 plt.imshow(disparity)
 plt.show()
