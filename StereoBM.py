@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 
 
 
-img = cv2.imread("./pic_en/2.jpg", 0)
+img = cv2.imread("judy.png", 0)
 
 imgL = np.split(img, 2, 1)[0]
 imgR = np.split(img, 2, 1)[1]
