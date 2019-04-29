@@ -6,19 +6,41 @@ import os
 import sys
 from matplotlib import pyplot as plt
 
+cap = cv2.VideoCapture('./vid/zootopia.mkv')
+frameCount = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+frameRate = cap.get(cv2.CAP_PROP_FPS)
+
+for frameID in range(int(frameRate), int(frameCount), int(frameRate/5)):
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frameID)
+    isSuccess, img = cap.read()
+    if isSuccess:
+        cv2.imshow('img', img)
+        imgL = np.split(img, 2, 1)[0]
+        imgR = np.split(img, 2, 1)[1]
+        cv2.waitKey(1)
+        stereo = cv2.StereoSGBM_create(numDisparities=96, blockSize=7)
+        disparity = stereo.compute(imgL, imgR)
+        plt.title("SGBM")
+        plt.imshow(disparity)
+        plt.show()
+
+
+
+
+
 # 中文文件名无法识别
-imgDirs = os.listdir("./pic_en")
+# imgDirs = os.listdir("./pic_en")
 
 
-def read_frame_as_jpeg(in_filename, frame_num):
-    out, err = (
-        ffmpeg
-        .input(in_filename)
-        .filter('select', 'gte(n,{})'.format(frame_num))
-        .output('pipe:', vframes=1, format='image2', vcodec='mjpeg')
-        .run(capture_stdout=True)
-    )
-    return out
+#def read_frame_as_jpeg(in_filename, frame_num):
+#    out, err = (
+#        ffmpeg
+#        .input(in_filename)
+#        .filter('select', 'gte(n,{})'.format(frame_num))
+#        .output('pipe:', vframes=1, format='image2', vcodec='mjpeg')
+#        .run(capture_stdout=True)
+#    )
+#    return out
 
 # ffmpeg.input("./vid/venom.mkv")
 # ffmpeg.
@@ -36,20 +58,6 @@ def read_frame_as_jpeg(in_filename, frame_num):
 # plt.show()
 
 
-cap = cv2.VideoCapture('./vid/zootopia.mkv')
-
-totalFrame = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-for frameID in range(1, int(totalFrame), 1440):
-    cap.set(cv2.CAP_PROP_POS_FRAMES, frameID)
-    isSuccess, img = cap.read()
-    if isSuccess:
-        cv2.imshow('img', img)
-        imgL = np.split(img, 2, 1)[0]
-        imgR = np.split(img, 2, 1)[1]
-        stereo = cv2.StereoSGBM_create(numDisparities=96, blockSize=11)
-        disparity = stereo.compute(imgL, imgR)
-        plt.imshow(disparity)
-        plt.show()
 
 
 #for imgDir in imgDirs:
