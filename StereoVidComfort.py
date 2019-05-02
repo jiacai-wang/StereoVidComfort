@@ -57,6 +57,9 @@ if __name__ == "__main__":
             plt.pause(0.5)
 
 
+
+
+
 # ffmpeg.input("./vid/avatar.mkv")
 
 # Motion Vector
