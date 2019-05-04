@@ -6,10 +6,18 @@ import os
 import sys
 from matplotlib import pyplot as plt
 
+'''
+TODO:
+    0:读取视频  √
+    1:获取视差  √
+    2:获取运动矢量    √
+    3:确定舒适度
+    4:加舒适度水印
+    ...
+'''
 
 def openVid():
-    fileName = "./vid/zootopia.mkv"
-    #fileName = input("video path:")
+    fileName = input("video path:")
     while not os.path.isfile(fileName):
         print("file doesn't exist!")
         fileName = input("video path:")
@@ -41,40 +49,56 @@ if __name__ == "__main__":
     cap = openVid()
     frameRate = getFrameRate(cap)
     frameCount = getFrameCount(cap)
-    ret, img = cap.read()
+
+    isSuccess, img = cap.read()
+    if not isSuccess:
+        print("video read error.")
+        sys.exit()
+
+    imgL = np.split(img, 2, 1)[0]
     imgR = np.split(img, 2, 1)[1]
     prvs = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY)
     hsv = np.zeros_like(imgR)
     hsv[..., 1] = 255
-    cap.set(cv2.CAP_PROP_POS_FRAMES,12000)
-    for frameID in range(int(cap.get(cv2.CAP_PROP_POS_FRAMES)), int(frameCount), int(frameRate/2)):
+
+    cap.set(cv2.CAP_PROP_POS_FRAMES,52000)
+
+    for frameID in range(int(cap.get(cv2.CAP_PROP_POS_FRAMES)), int(frameCount), int(frameRate/4)):
         cap.set(cv2.CAP_PROP_POS_FRAMES, frameID)
         isSuccess, img = cap.read()
-        if isSuccess:
+        if not isSuccess:
+            print("video read error.")
+            sys.exit()
 
-            imgL = np.split(img, 2, 1)[0]
-            imgR = np.split(img, 2, 1)[1]
-            next = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY)
-            flow = cv2.calcOpticalFlowFarneback(prvs, next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
-            mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
-            hsv[..., 0] = ang*180/np.pi/2
-            hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
-            bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        imgL = np.split(img, 2, 1)[0]
+        imgR = np.split(img, 2, 1)[1]
+        next = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY)
+        flow = cv2.calcOpticalFlowFarneback(prvs, next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+        mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+        hsv[..., 0] = ang*180/np.pi/2
+        hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+        bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
-            cv2.namedWindow("imgR", cv2.WINDOW_NORMAL)
-            cv2.imshow('imgR', imgR)
-            cv2.namedWindow("MotionVector",cv2.WINDOW_NORMAL)
-            cv2.imshow("MotionVector",bgr)
-            prvs = next
+        cv2.namedWindow("img", cv2.WINDOW_NORMAL)
+        cv2.imshow('img', img)
+        cv2.namedWindow("MotionVector",cv2.WINDOW_NORMAL)
+        cv2.imshow("MotionVector",bgr)
+        prvs = next
+        
 
-            stereo = cv2.StereoSGBM_create(numDisparities=96, blockSize=11)
-            disparity = stereo.compute(imgL, imgR)
-            #cv2.waitKey(1)
-            plt.title("DepthMap")
-            plt.imshow(disparity)
-            plt.pause(0.5)
-        else:
-            print("video read error")
+        stereo = cv2.StereoSGBM_create(numDisparities=96, blockSize=11)
+        disparity = stereo.compute(imgL, imgR)
+        print("time: ", frameID/frameRate)
+        print("AVG depth: ",np.mean(disparity))
+        print("AVG motion: ",np.mean(hsv[...,2]))
+        print()
+        cv2.waitKey(1)
+        #cv2.waitKey(1)
+        #plt.title("DepthMap")
+        #plt.imshow(disparity)
+        #plt.pause(0.5)
+
+
     print("success")
 
 

@@ -8,7 +8,7 @@ prvs = cv.cvtColor(frame1, cv.COLOR_BGR2GRAY)
 hsv = np.zeros_like(frame1)
 hsv[..., 1] = 255
 print("jump ahead")
-cap.set(cv.CAP_PROP_POS_FRAMES, 59760)
+cap.set(cv.CAP_PROP_POS_FRAMES, 12000)
 print("jump done")
 
 while(1):
@@ -22,9 +22,9 @@ while(1):
     hsv[..., 0] = ang*180/np.pi/2
     hsv[..., 2] = cv.normalize(mag, None, 0, 255, cv.NORM_MINMAX)
     bgr = cv.cvtColor(hsv, cv.COLOR_HSV2BGR)
-    cv.namedWindow("frame2", cv.WINDOW_NORMAL)
+    cv.namedWindow("MotionVector", cv.WINDOW_NORMAL)
     cv.namedWindow("frame", cv.WINDOW_NORMAL)
-    cv.imshow('frame2', bgr)
+    cv.imshow('MotionVector', bgr)
     cv.imshow("frame", frame2)
     cv.waitKey(1)
     #k = cv.waitKey(0.1) & 0xff
