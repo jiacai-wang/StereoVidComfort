@@ -98,14 +98,14 @@ if __name__ == "__main__":
     prvs = imgR  # 上一帧的右画面，用于运动矢量计算
 
     # 每秒取5帧进行计算
-    for frameID in range(round(cap.get(cv2.CAP_PROP_POS_FRAMES)), round(frameCount), round(frameRate/5)):
-        if frameID >= frameCount:
-            frameID -= 1
+    for frameID in range(round(0), round(frameCount), round(frameRate/5)):
+        if frameID >= frameCount - 3:
+            frameID = frameCount - 3
         cap.set(cv2.CAP_PROP_POS_FRAMES, frameID)
         isSuccess, img = cap.read()
         if not isSuccess:
             print("video read error.")
-            sys.exit()
+            break
 
         # 分割左右画面
         imgL = np.split(img, 2, 1)[0]
@@ -125,14 +125,14 @@ if __name__ == "__main__":
         
         # 景深的平均值，偏大则意味着负视差（出屏感），可能不适
         AVG_depth = round(np.mean(disparity), 2)
-        print("AVG depth: ", AVG_depth)      # 大于0时开始不适，权重为0.15
-        if AVG_depth > 0:
+        print("AVG depth: ", AVG_depth)      # 大于-10时开始不适，权重为0.15
+        if AVG_depth > -10:
             comfort -= 0.15
 
         # 运动矢量大小的平均值，可判断画面大致上是否稳定
         AVG_motionMag = round(np.mean(hsv[..., 2]), 2)
-        print("AVG motionMag: ", AVG_motionMag)       # 大于30时略不适，权重0.1
-        if AVG_motionMag > 30:
+        print("AVG motionMag: ", AVG_motionMag)       # 大于20时略不适，权重0.1
+        if AVG_motionMag > 20:
             comfort -= 0.1
 
         # 景深的众数，由于景深基本不连续，众数意义不大
@@ -140,23 +140,23 @@ if __name__ == "__main__":
         
         # 运动矢量大小的众数，一般为0，若较大，说明画面中存在较大面积的快速运动，可能不适
         Mode_motionMag = stats.mode(hsv[..., 2].reshape(-1))[0][0]
-        print("Mode motionMag: ", Mode_motionMag)       # 大于0则不适，越大越不适，权重0.2，0到60归一化为0到0.15，大于60为0.2
+        print("Mode motionMag: ", Mode_motionMag)       # 大于0则不适，越大越不适，权重0.2，0到30归一化为0.1到0.15，大于60为0.2
         if Mode_motionMag > 0:
-            if Mode_motionMag > 60:
+            if Mode_motionMag > 30:
                 comfort -= 0.2
             else:
-                comfort -= Mode_motionMag/400
+                comfort -= (Mode_motionMag/600 + 0.1)
 
         # 景深的标准差，若偏大说明景深范围较大，可能不适，但同时也是3D感更强的特征
         STD_depth = round(np.std(disparity),2)
-        print("STD depth: ", STD_depth)        # 大于150时略不适，权重为0.15
-        if STD_depth > 150:
+        print("STD depth: ", STD_depth)        # 大于130时略不适，权重为0.15
+        if STD_depth > 130:
             comfort -= 0.15
 
         # 运动矢量大小的标准差，若偏大说明各部分运动比较不一致，可能需要结合运动矢量的方向作进一步判断，若存在较复杂的运动形式，则可能不适
         STD_motionMag = round(np.std(hsv[...,2]),2)
-        print("STD motionMag: ", STD_motionMag)       # 大于30时略不适，权重为0.1
-        if STD_motionMag > 30:
+        print("STD motionMag: ", STD_motionMag)       # 大于20时略不适，权重为0.1
+        if STD_motionMag > 20:
             comfort -= 0.1
 
         # 运动矢量方向的标准差，若偏大说明各部分运动比较不一致，可能需要结合运动矢量的大小作进一步判断，若存在较复杂的运动形式，则可能不适
@@ -165,10 +165,10 @@ if __name__ == "__main__":
         disparity_Positive = disparity.copy()
         disparity_Positive[disparity_Positive < 0] = 0
         
-        # 负视差的像素的所占比例，大于0.3时比较不适，权重0.15
+        # 负视差的像素的所占比例，大于0.25时比较不适，权重0.15
         PCT_disparity_Positive = np.count_nonzero(disparity_Positive)/disparity_Positive.shape[0]/disparity_Positive.shape[1]
         print("close pixels percetage:", round(PCT_disparity_Positive,3))
-        if PCT_disparity_Positive > 0.3:
+        if PCT_disparity_Positive > 0.25:
             comfort -= 0.15
 
         # 存在运动的像素点的视差平均值
@@ -177,8 +177,8 @@ if __name__ == "__main__":
         movingPixels[movingPixels > 0] = 1
         movingDepth = np.multiply(disparity, movingPixels)
         AVG_movingDepth = round(np.sum(movingDepth)/np.count_nonzero(movingDepth))
-        print("AVG movingDepth: ", AVG_movingDepth)        # 大于10时不适，权重0.15
-        if AVG_movingDepth > 10:
+        print("AVG movingDepth: ", AVG_movingDepth)        # 大于5时不适，权重0.15
+        if AVG_movingDepth > 5:
             comfort -= 0.15
         
         framesComfort.append(comfort)
@@ -218,6 +218,7 @@ if __name__ == "__main__":
             # plt.pause(0.1)
             input("press Enter to continue")
         prvs = next  # 当前帧覆盖上一帧，继续计算
+    print("TotalFrameCalculated: ", framesCalculated)
     print("TotalComfort: ", round(sum(framesComfort)/framesCalculated,2))
     print("success")
 
