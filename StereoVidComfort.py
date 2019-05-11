@@ -15,6 +15,7 @@ TODO:
     2:获取运动矢量    √
     3:确定舒适度
     4:加舒适度水印
+    5:提高舒适度？？？
     ...
 '''
 
@@ -55,7 +56,9 @@ def getFrameRate(cap):
 
 # 给出左右画面，计算景深
 def getDepthMap(imgL, imgR):
-    stereo = cv2.StereoSGBM_create(numDisparities=32, blockSize=3)
+
+    # stereo = cv2.StereoBM_create(numDisparity = 32, blockSize = 3)        # 速度快，准确性较低，单通道
+    stereo = cv2.StereoSGBM_create(minDisparity = -16, numDisparities = 48, blockSize = 5, P1=320, P2=1280)      # 速度稍慢，准确性较高，多通道
     return stereo.compute(imgL, imgR)
 
 
@@ -83,6 +86,7 @@ if __name__ == "__main__":
     frameRate = getFrameRate(cap)
     frameCount = getFrameCount(cap)
     framesCalculated = 0
+    framesComfort = []
     isSuccess, img = cap.read()
     if not isSuccess:
         print("video read error.")
@@ -93,8 +97,10 @@ if __name__ == "__main__":
     imgR = np.split(img, 2, 1)[1]
     prvs = imgR  # 上一帧的右画面，用于运动矢量计算
 
-    # 每秒取4帧进行计算
-    for frameID in range(round(cap.get(cv2.CAP_PROP_POS_FRAMES)), round(frameCount), round(frameRate/4)):
+    # 每秒取5帧进行计算
+    for frameID in range(round(cap.get(cv2.CAP_PROP_POS_FRAMES)), round(frameCount), round(frameRate/5)):
+        if frameID >= frameCount:
+            frameID -= 1
         cap.set(cv2.CAP_PROP_POS_FRAMES, frameID)
         isSuccess, img = cap.read()
         if not isSuccess:
@@ -108,42 +114,110 @@ if __name__ == "__main__":
         next = imgR  # 当前帧的右画面，用于运动矢量计算
         hsv = getMotionVector(prvs, next)
 
-        # 计算深度图
+        # 计算深度图,disparity越大，景深越小，物体越近
         disparity = getDepthMap(imgL, imgR)
 
         framesCalculated += 1
+        comfort = 1
 
         # 显示计算结果
         print("time: ", round(frameID/frameRate, 2))
-        print("AVG depth: ", round(np.mean(disparity), 2))      # 景深的平均值，偏大则意味着负视差，可能不适
-        print("AVG motion: ", round(np.mean(hsv[..., 2]), 2))       # 运动矢量大小的平均值，可判断画面大致上是否稳定
-        print("Mode depth: ", stats.mode(disparity.reshape(-1))[0][0])      # 景深的众数，由于景深基本不连续，众数意义不大
-        print("Mode motion: ", stats.mode(hsv[..., 2].reshape(-1))[0][0])       # 运动矢量大小的众数，一般为0，若较大，说明画面中存在较大面积的快速运动，可能不适
-        print("STD depth: ", round(np.std(disparity),2))        # 景深的标准差，若偏大说明景深范围较大，可能不适，但同时也是3D感更强的特征
-        print("STD motion: ", round(np.std(hsv[...,2]),2))      # 运动矢量大小的标准差，若偏大说明各部分运动比较不一致，可能需要结合运动矢量的方向作进一步判断，若存在较复杂的运动形式，则可能不适
+        
+        # 景深的平均值，偏大则意味着负视差（出屏感），可能不适
+        AVG_depth = round(np.mean(disparity), 2)
+        print("AVG depth: ", AVG_depth)      # 大于0时开始不适，权重为0.15
+        if AVG_depth > 0:
+            comfort -= 0.15
+
+        # 运动矢量大小的平均值，可判断画面大致上是否稳定
+        AVG_motionMag = round(np.mean(hsv[..., 2]), 2)
+        print("AVG motionMag: ", AVG_motionMag)       # 大于30时略不适，权重0.1
+        if AVG_motionMag > 30:
+            comfort -= 0.1
+
+        # 景深的众数，由于景深基本不连续，众数意义不大
+        # print("Mode depth: ", stats.mode(disparity.reshape(-1))[0][0])      # 无明显阈值
+        
+        # 运动矢量大小的众数，一般为0，若较大，说明画面中存在较大面积的快速运动，可能不适
+        Mode_motionMag = stats.mode(hsv[..., 2].reshape(-1))[0][0]
+        print("Mode motionMag: ", Mode_motionMag)       # 大于0则不适，越大越不适，权重0.2，0到60归一化为0到0.15，大于60为0.2
+        if Mode_motionMag > 0:
+            if Mode_motionMag > 60:
+                comfort -= 0.2
+            else:
+                comfort -= Mode_motionMag/400
+
+        # 景深的标准差，若偏大说明景深范围较大，可能不适，但同时也是3D感更强的特征
+        STD_depth = round(np.std(disparity),2)
+        print("STD depth: ", STD_depth)        # 大于150时略不适，权重为0.15
+        if STD_depth > 150:
+            comfort -= 0.15
+
+        # 运动矢量大小的标准差，若偏大说明各部分运动比较不一致，可能需要结合运动矢量的方向作进一步判断，若存在较复杂的运动形式，则可能不适
+        STD_motionMag = round(np.std(hsv[...,2]),2)
+        print("STD motionMag: ", STD_motionMag)       # 大于30时略不适，权重为0.1
+        if STD_motionMag > 30:
+            comfort -= 0.1
+
+        # 运动矢量方向的标准差，若偏大说明各部分运动比较不一致，可能需要结合运动矢量的大小作进一步判断，若存在较复杂的运动形式，则可能不适
+        # print("STD motionAng: ", round(np.std(hsv[...,0]),2))       # 无明显阈值
+
+        disparity_Positive = disparity.copy()
+        disparity_Positive[disparity_Positive < 0] = 0
+        
+        # 负视差的像素的所占比例，大于0.3时比较不适，权重0.15
+        PCT_disparity_Positive = np.count_nonzero(disparity_Positive)/disparity_Positive.shape[0]/disparity_Positive.shape[1]
+        print("close pixels percetage:", round(PCT_disparity_Positive,3))
+        if PCT_disparity_Positive > 0.3:
+            comfort -= 0.15
+
+        # 存在运动的像素点的视差平均值
+        movingPixels = hsv[...,2]
+        movingPixels[movingPixels < 10] = 0     # 小于10的运动认为是静止
+        movingPixels[movingPixels > 0] = 1
+        movingDepth = np.multiply(disparity, movingPixels)
+        AVG_movingDepth = round(np.sum(movingDepth)/np.count_nonzero(movingDepth))
+        print("AVG movingDepth: ", AVG_movingDepth)        # 大于10时不适，权重0.15
+        if AVG_movingDepth > 10:
+            comfort -= 0.15
+        
+        framesComfort.append(comfort)
+        comfort = round(comfort, 3)
 
         print()
+        print("CurFrameComfort: ", comfort)
+        print("TotalComfort: ", round(sum(framesComfort)/framesCalculated,2))
+        print()
+
+
 
         # 当为demo模式时显示当前帧画面、运动矢量图和景深图
         if isDemo:
             # 显示当前帧
             cv2.namedWindow("img", cv2.WINDOW_NORMAL)
             cv2.imshow('img', img)
+            cv2.waitKey(1)
+            
+            # cv2.namedWindow("imgL", cv2.WINDOW_NORMAL)
+            # cv2.imshow('imgL', imgL)
+            # cv2.namedWindow("imgR", cv2.WINDOW_NORMAL)
+            # cv2.imshow('imgR', imgR)
 
             # 显示当前帧的运动矢量的hsv表示
-            bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # hsv转为rgb用于显示
-            cv2.namedWindow("MotionVector", cv2.WINDOW_NORMAL)
-            cv2.imshow("MotionVector", bgr)
+            # bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # hsv转为rgb用于显示
+            # cv2.namedWindow("MotionVector", cv2.WINDOW_NORMAL)
+            # cv2.imshow("MotionVector", bgr)
             # cv2.waitKey(1)
             # 显示当前帧的景深图
-            plt.title("DepthMap")
-            plt.imshow(disparity)
+            # plt.title("DepthMap")
+            # plt.imshow(disparity)
             # 运动矢量的直方图，方便查看数值
             # plt.title("MotionVector")
             # plt.imshow(hsv[...,2])
             # plt.show()
-            plt.pause(0.2)
-            input("press to continue")
+            # plt.pause(0.1)
+            input("press Enter to continue")
         prvs = next  # 当前帧覆盖上一帧，继续计算
+    print("TotalComfort: ", round(sum(framesComfort)/framesCalculated,2))
     print("success")
 
