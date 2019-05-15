@@ -113,7 +113,7 @@ if __name__ == "__main__":
 
         next = imgR  # 当前帧的右画面，用于运动矢量计算
         hsv = getMotionVector(prvs, next)
-
+        hsv_bak = hsv.copy()
         # 计算深度图,disparity越大，景深越小，物体越近
         disparity = getDepthMap(imgL, imgR)
 
@@ -204,18 +204,21 @@ if __name__ == "__main__":
             # cv2.imshow('imgR', imgR)
 
             # 显示当前帧的运动矢量的hsv表示
-            # bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)  # hsv转为rgb用于显示
-            # cv2.namedWindow("MotionVector", cv2.WINDOW_NORMAL)
-            # cv2.imshow("MotionVector", bgr)
-            # cv2.waitKey(1)
+            bgr = cv2.cvtColor(hsv_bak, cv2.COLOR_HSV2BGR)  # hsv转为rgb用于显示
+            cv2.namedWindow("MotionVector", cv2.WINDOW_NORMAL)
+            cv2.imshow("MotionVector", bgr)
+            cv2.waitKey(1)
             # 显示当前帧的景深图
-            # plt.title("DepthMap")
-            # plt.imshow(disparity)
+            plt.title("DepthMap")
+            plt.imshow(disparity)
+            #  plt.pause(0.1)
+            #  input("press Enter to continue")
+
             # 运动矢量的直方图，方便查看数值
             # plt.title("MotionVector")
             # plt.imshow(hsv[...,2])
             # plt.show()
-            # plt.pause(0.1)
+            plt.pause(0.1)
             input("press Enter to continue")
         prvs = next  # 当前帧覆盖上一帧，继续计算
     print("TotalFrameCalculated: ", framesCalculated)

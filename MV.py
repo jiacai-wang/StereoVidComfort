@@ -8,7 +8,7 @@ prvs = cv.cvtColor(frame1, cv.COLOR_BGR2GRAY)
 hsv = np.zeros_like(frame1)
 hsv[..., 1] = 255
 print("jump ahead")
-cap.set(cv.CAP_PROP_POS_FRAMES, 12000)
+cap.set(cv.CAP_PROP_POS_FRAMES, 4)
 print("jump done")
 
 while(1):
