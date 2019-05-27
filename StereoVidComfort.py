@@ -202,9 +202,10 @@ if __name__ == "__main__":
                 else:
                     mod_cmft = 0
                 comfort_optimized = round(mod_cmft - orgn_cmft, 3)
-                framesOptimized += 1
-                framesComfortOptimized.append(comfort_optimized)
-                print("comfort optimized by ", comfort_optimized)
+                if comfort_optimized > 0:
+                    framesOptimized += 1
+                    framesComfortOptimized.append(comfort_optimized)
+                    print("comfort can be optimized by ", comfort_optimized)
 
 
 
