@@ -58,7 +58,8 @@ def getFrameRate(cap):
 def getDepthMap(imgL, imgR):
 
     # stereo = cv2.StereoBM_create(numDisparity = 32, blockSize = 3)        # 速度快，准确性较低，单通道
-    stereo = cv2.StereoSGBM_create(minDisparity = -16, numDisparities = 48, blockSize = 5, P1=320, P2=1280)      # 速度稍慢，准确性较高，多通道
+    stereo = cv2.StereoSGBM_create(
+        minDisparity=-16, numDisparities=48, blockSize=5, P1=320, P2=1280)      # 速度稍慢，准确性较高，多通道
     return stereo.compute(imgL, imgR)
 
 
@@ -83,10 +84,14 @@ def getMotionVector(prvs, next):
 if __name__ == "__main__":
     cap = openVid()
     isDemo = int(input("is Demo(0/1)?"))
+    calcMod = int(input("calc optimize potential?"))
     frameRate = getFrameRate(cap)
     frameCount = getFrameCount(cap)
     framesCalculated = 0
+    framesOptimized = 0
     framesComfort = []
+    framesComfortOptimized = []
+
     isSuccess, img = cap.read()
     if not isSuccess:
         print("video read error.")
@@ -122,7 +127,7 @@ if __name__ == "__main__":
 
         # 显示计算结果
         print("time: ", round(frameID/frameRate, 2))
-        
+
         # 景深的平均值，偏大则意味着负视差（出屏感），可能不适
         AVG_depth = round(np.mean(disparity), 2)
         print("AVG depth: ", AVG_depth)      # 大于-10时开始不适，权重为0.15
@@ -137,10 +142,11 @@ if __name__ == "__main__":
 
         # 景深的众数，由于景深基本不连续，众数意义不大
         # print("Mode depth: ", stats.mode(disparity.reshape(-1))[0][0])      # 无明显阈值
-        
+
         # 运动矢量大小的众数，一般为0，若较大，说明画面中存在较大面积的快速运动，可能不适
         Mode_motionMag = stats.mode(hsv[..., 2].reshape(-1))[0][0]
-        print("Mode motionMag: ", Mode_motionMag)       # 大于0则不适，越大越不适，权重0.2，0到30归一化为0.1到0.15，大于60为0.2
+        # 大于0则不适，越大越不适，权重0.2，0到30归一化为0.1到0.15，大于30为0.2
+        print("Mode motionMag: ", Mode_motionMag)
         if Mode_motionMag > 0:
             if Mode_motionMag > 30:
                 comfort -= 0.2
@@ -148,13 +154,13 @@ if __name__ == "__main__":
                 comfort -= (Mode_motionMag/600 + 0.1)
 
         # 景深的标准差，若偏大说明景深范围较大，可能不适，但同时也是3D感更强的特征
-        STD_depth = round(np.std(disparity),2)
+        STD_depth = round(np.std(disparity), 2)
         print("STD depth: ", STD_depth)        # 大于130时略不适，权重为0.15
         if STD_depth > 130:
             comfort -= 0.15
 
         # 运动矢量大小的标准差，若偏大说明各部分运动比较不一致，可能需要结合运动矢量的方向作进一步判断，若存在较复杂的运动形式，则可能不适
-        STD_motionMag = round(np.std(hsv[...,2]),2)
+        STD_motionMag = round(np.std(hsv[..., 2]), 2)
         print("STD motionMag: ", STD_motionMag)       # 大于20时略不适，权重为0.1
         if STD_motionMag > 20:
             comfort -= 0.1
@@ -164,32 +170,62 @@ if __name__ == "__main__":
 
         disparity_Positive = disparity.copy()
         disparity_Positive[disparity_Positive < 0] = 0
-        
-        # 负视差的像素的所占比例，大于0.25时比较不适，权重0.15
-        PCT_disparity_Positive = np.count_nonzero(disparity_Positive)/disparity_Positive.shape[0]/disparity_Positive.shape[1]
-        print("close pixels percetage:", round(PCT_disparity_Positive,3))
-        if PCT_disparity_Positive > 0.25:
-            comfort -= 0.15
+
+        # 负视差的像素的所占比例，大于0.2时比较不适，权重0.15，0.2到0.4归一化为0.05到0.1，大于0.4为0.15
+        PCT_disparity_Positive = np.count_nonzero(
+            disparity_Positive)/disparity_Positive.shape[0]/disparity_Positive.shape[1]
+        print("close pixels percetage:", round(PCT_disparity_Positive, 3))
+        if PCT_disparity_Positive > 0.2:
+            if PCT_disparity_Positive > 0.4:
+                comfort -= 0.15
+                orgn_cmft = -0.15
+            else:
+                comfort -= ((PCT_disparity_Positive - 0.2) / 4 + 0.05)
+                orgn_cmft = -((PCT_disparity_Positive - 0.2) / 4 + 0.05)
+            if calcMod:
+                # 视差重映射并重新计算
+                # 实际并不写入文件，只估计此项提升值
+                trans = np.float32([[1,0,20],[0,1,0]])
+                imgR_Mod = cv2.warpAffine(imgR, trans, imgR.shape[:2])
+                imgR_Mod = imgR_Mod.transpose((1,0,2))
+                disparity_Mod = getDepthMap(imgL, imgR_Mod)
+                disparity_Positive = disparity_Mod.copy()
+                disparity_Positive[disparity_Positive < 0] = 0
+                PCT_disparity_Positive = np.count_nonzero(
+                    disparity_Positive)/disparity_Positive.shape[0]/disparity_Positive.shape[1]
+                print("Modified close pixels percetage:", round(PCT_disparity_Positive, 3))
+                if PCT_disparity_Positive > 0.2:
+                    if PCT_disparity_Positive > 0.4:
+                        mod_cmft = -0.15
+                    else:
+                        mod_cmft = -((PCT_disparity_Positive - 0.2) / 4 + 0.05)
+                else:
+                    mod_cmft = 0
+                comfort_optimized = round(mod_cmft - orgn_cmft, 3)
+                framesOptimized += 1
+                framesComfortOptimized.append(comfort_optimized)
+                print("comfort optimized by ", comfort_optimized)
+
+
 
         # 存在运动的像素点的视差平均值
-        movingPixels = hsv[...,2]
+        movingPixels = hsv[..., 2]
         movingPixels[movingPixels < 10] = 0     # 小于10的运动认为是静止
         movingPixels[movingPixels > 0] = 1
         movingDepth = np.multiply(disparity, movingPixels)
-        AVG_movingDepth = round(np.sum(movingDepth)/np.count_nonzero(movingDepth))
+        AVG_movingDepth = round(np.sum(movingDepth) /
+                                np.count_nonzero(movingDepth))
         print("AVG movingDepth: ", AVG_movingDepth)        # 大于5时不适，权重0.15
         if AVG_movingDepth > 5:
             comfort -= 0.15
-        
+
         framesComfort.append(comfort)
         comfort = round(comfort, 3)
 
         print()
         print("CurFrameComfort: ", comfort)
-        print("TotalComfort: ", round(sum(framesComfort)/framesCalculated,2))
+        print("TotalComfort: ", round(sum(framesComfort)/framesCalculated, 2))
         print()
-
-
 
         # 当为demo模式时显示当前帧画面、运动矢量图和景深图
         if isDemo:
@@ -197,7 +233,7 @@ if __name__ == "__main__":
             cv2.namedWindow("img", cv2.WINDOW_NORMAL)
             cv2.imshow('img', img)
             cv2.waitKey(1)
-            
+
             # cv2.namedWindow("imgL", cv2.WINDOW_NORMAL)
             # cv2.imshow('imgL', imgL)
             # cv2.namedWindow("imgR", cv2.WINDOW_NORMAL)
@@ -222,6 +258,7 @@ if __name__ == "__main__":
             input("press Enter to continue")
         prvs = next  # 当前帧覆盖上一帧，继续计算
     print("TotalFrameCalculated: ", framesCalculated)
-    print("TotalComfort: ", round(sum(framesComfort)/framesCalculated,2))
+    print("TotalComfort: ", round(sum(framesComfort)/framesCalculated, 2))
+    if calcMod:
+        print("estimated comfort optimization potential：", round(sum(framesComfortOptimized)/framesOptimized, 3))
     print("success")
-
